@@ -991,22 +991,9 @@ function ProjectDetail({project:p,alertCfg,members,depts,onClose,onUpdate,onDele
           </div>
         </div>
 
-        {/* 단계 이동 */}
+        {/* 단계 이동 + 서류 블록 + AI 검수 */}
         {!editing&&(
-          <div style={{marginBottom:14}}>
-            <div style={{fontSize:11,color:'var(--text2)',marginBottom:8,fontWeight:600,
-              textTransform:'uppercase',letterSpacing:'.04em'}}>단계 이동</div>
-            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-              {nextStage&&<button className="btn sm primary" onClick={()=>onUpdate({stage:nextStage.id})}>
-                → {nextStage.label}
-              </button>}
-              {prevStage&&<button className="btn sm" onClick={()=>onUpdate({stage:prevStage.id})}>
-                ← {prevStage.label}
-              </button>}
-              <button className="btn sm" style={{borderColor:'var(--red)',color:'var(--red)'}}
-                onClick={()=>onUpdate({stage:'cancelled'||p.stage})}>취소</button>
-            </div>
-          </div>
+          <StageGate project={p} nextStage={nextStage} prevStage={prevStage} onUpdate={onUpdate}/>
         )}
 
         {/* 탭 */}
@@ -1389,6 +1376,214 @@ const STAGE_DOCS={
                {id:'proj_report', label:'프로젝트 완료 보고서',   owner:'영업',  required:false}],
 };
 
+
+
+/* ── StageGate — 서류 블록 + AI 검수 ─────────────── */
+function StageGate({project:p, nextStage, prevStage, onUpdate}){
+  const [aiState,setAiState]=useState('idle'); // idle | loading | result
+  const [aiResult,setAiResult]=useState(null);
+
+  // 현재 단계 필수 서류 완료 여부 체크
+  const stageDocs=STAGE_DOCS[p.stage]||[];
+  const requiredDocs=stageDocs.filter(d=>d.required);
+  const allRequiredDone=requiredDocs.every(d=>(p.docs||{})[p.stage+'_'+d.id]==='done');
+  const doneCount=requiredDocs.filter(d=>(p.docs||{})[p.stage+'_'+d.id]==='done').length;
+  const totalRequired=requiredDocs.length;
+
+  // 미완료 필수 서류 목록
+  const missingDocs=requiredDocs.filter(d=>(p.docs||{})[p.stage+'_'+d.id]!=='done');
+
+  async function runAiReview(){
+    if(!allRequiredDone){return;}
+    setAiState('loading');
+    setAiResult(null);
+
+    const si=stageInfo(p.stage);
+    const allDocs=stageDocs.map(d=>{
+      const status=(p.docs||{})[p.stage+'_'+d.id]||'미확인';
+      return `- ${d.label} (${d.required?'필수':'선택'}): ${status==='done'?'완료':status==='pending'?'진행중':status==='missing'?'미제출':'미확인'}`;
+    }).join('\n');
+
+    const prompt=`당신은 AMR(자율이동로봇) 제조사의 프로젝트 관리 AI입니다.
+
+아래 프로젝트가 현재 단계에서 다음 단계로 이동해도 되는지 검수해주세요.
+
+[프로젝트 정보]
+- 프로젝트명: ${p.name}
+- 고객사: ${p.customer||'미입력'}
+- 현재 단계: ${si.label} (${si.en})
+- 다음 단계: ${nextStage?nextStage.label:'없음'}
+- 체류 일수: ${Math.floor((Date.now()-new Date(p.stageEnteredAt))/86400000)}일
+
+[서류 현황]
+${allDocs}
+
+[CR 현황]
+- 총 CR 수: ${(p.crs||[]).length}건
+- 미처리 CR: ${(p.crs||[]).filter(c=>['open','review','pending'].includes(c.status)).length}건
+
+검수 결과를 아래 JSON 형식으로만 응답해주세요. 다른 텍스트 없이 JSON만:
+{
+  "verdict": "PASS" 또는 "FAIL" 또는 "CAUTION",
+  "summary": "한 줄 요약 (30자 이내)",
+  "reasons": ["이유1", "이유2"],
+  "recommendation": "권고사항 (구체적으로)"
+}`;
+
+    try{
+      const res=await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          model:'claude-sonnet-4-20250514',
+          max_tokens:1000,
+          messages:[{role:'user',content:prompt}]
+        })
+      });
+      const data=await res.json();
+      const text=data.content?.find(c=>c.type==='text')?.text||'{}';
+      const clean=text.replace(/```json|```/g,'').trim();
+      const parsed=JSON.parse(clean);
+      setAiResult(parsed);
+      setAiState('result');
+    }catch(e){
+      setAiResult({verdict:'FAIL',summary:'AI 검수 오류',reasons:['API 연결 실패'],recommendation:'수동으로 서류를 확인한 후 이동하세요.'});
+      setAiState('result');
+    }
+  }
+
+  const verdictStyle={
+    PASS: {bg:'var(--green-dim)',border:'#00e69940',color:'var(--green)',icon:'✅'},
+    CAUTION: {bg:'var(--amber-dim)',border:'#ffb80040',color:'var(--amber)',icon:'⚠️'},
+    FAIL: {bg:'var(--red-dim)',border:'#ff475740',color:'var(--red)',icon:'❌'},
+  };
+
+  return(
+    <div style={{marginBottom:16}}>
+      <div style={{fontSize:11,color:'var(--text2)',marginBottom:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'.04em'}}>
+        단계 이동
+      </div>
+
+      {/* 필수 서류 진행 바 */}
+      {totalRequired>0&&(
+        <div style={{background:'var(--bg3)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:10,border:`1px solid ${allRequiredDone?'#00e69940':'#ffb80040'}`}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+            <span style={{fontSize:12,fontWeight:600,color:allRequiredDone?'var(--green)':'var(--amber)'}}>
+              {allRequiredDone?'✅ 필수 서류 완료':'📋 필수 서류 확인 필요'}
+            </span>
+            <span style={{fontSize:12,fontFamily:"'DM Mono',monospace",fontWeight:700,color:allRequiredDone?'var(--green)':'var(--amber)'}}>
+              {doneCount}/{totalRequired}
+            </span>
+          </div>
+          <div style={{background:'var(--bg4)',borderRadius:3,height:5}}>
+            <div style={{height:'100%',borderRadius:3,background:allRequiredDone?'var(--green)':'var(--amber)',
+              width:`${totalRequired>0?(doneCount/totalRequired)*100:0}%`,transition:'width .3s'}}/>
+          </div>
+          {!allRequiredDone&&missingDocs.length>0&&(
+            <div style={{marginTop:8,display:'flex',flexWrap:'wrap',gap:4}}>
+              {missingDocs.map(d=>(
+                <span key={d.id} style={{fontSize:10,padding:'2px 8px',borderRadius:10,
+                  background:'var(--amber-dim)',color:'var(--amber)',border:'1px solid #ffb80030'}}>
+                  {d.label}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 버튼 그룹 */}
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+        {/* 이전 단계 */}
+        {prevStage&&(
+          <button className="btn sm" onClick={()=>onUpdate({stage:prevStage.id})}>
+            ← {prevStage.label}
+          </button>
+        )}
+
+        {/* AI 검수 버튼 */}
+        {nextStage&&allRequiredDone&&aiState==='idle'&&(
+          <button className="btn sm" onClick={runAiReview}
+            style={{background:'linear-gradient(135deg,#6c63ff,#00d4ff)',border:'none',color:'#fff',fontWeight:600}}>
+            🤖 AI 검수 후 이동
+          </button>
+        )}
+
+        {/* AI 로딩 */}
+        {aiState==='loading'&&(
+          <button className="btn sm" disabled style={{background:'var(--bg3)',color:'var(--text2)'}}>
+            ⏳ AI 검수 중...
+          </button>
+        )}
+
+        {/* 서류 미완료 시 이동 불가 */}
+        {nextStage&&!allRequiredDone&&(
+          <button className="btn sm primary" disabled title={`필수 서류 ${totalRequired-doneCount}개 미완료`}
+            style={{opacity:.4,cursor:'not-allowed'}}>
+            🔒 → {nextStage.label}
+          </button>
+        )}
+
+        {/* 강제 이동 (서류 완료지만 AI 검수 전) */}
+        {nextStage&&allRequiredDone&&aiState==='idle'&&(
+          <button className="btn sm ghost" onClick={()=>onUpdate({stage:nextStage.id})}
+            style={{fontSize:11,color:'var(--text3)'}}>
+            검수 없이 이동
+          </button>
+        )}
+
+        <button className="btn sm" style={{borderColor:'var(--red)',color:'var(--red)'}}
+          onClick={()=>onUpdate({stage:p.stage})}>취소</button>
+      </div>
+
+      {/* AI 검수 결과 */}
+      {aiState==='result'&&aiResult&&(()=>{
+        const vs=verdictStyle[aiResult.verdict]||verdictStyle['CAUTION'];
+        return(
+          <div style={{marginTop:12,background:vs.bg,border:`1px solid ${vs.border}`,borderRadius:'var(--r2)',padding:'14px 16px'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+              <span style={{fontSize:18}}>{vs.icon}</span>
+              <div>
+                <div style={{fontSize:14,fontWeight:700,color:vs.color}}>{aiResult.summary}</div>
+                <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>AI 검수 완료</div>
+              </div>
+              <button onClick={()=>setAiState('idle')} style={{marginLeft:'auto',background:'transparent',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:14}}>✕</button>
+            </div>
+
+            {aiResult.reasons&&aiResult.reasons.length>0&&(
+              <div style={{marginBottom:8}}>
+                {aiResult.reasons.map((r,i)=>(
+                  <div key={i} style={{fontSize:12,color:'var(--text)',marginBottom:3,display:'flex',gap:6}}>
+                    <span style={{color:vs.color,flexShrink:0}}>•</span><span>{r}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {aiResult.recommendation&&(
+              <div style={{fontSize:12,color:'var(--text2)',background:'rgba(0,0,0,.2)',borderRadius:'var(--r)',padding:'8px 10px',marginBottom:12}}>
+                💡 {aiResult.recommendation}
+              </div>
+            )}
+
+            {/* PASS / CAUTION이면 이동 버튼 활성화 */}
+            {nextStage&&(aiResult.verdict==='PASS'||aiResult.verdict==='CAUTION')&&(
+              <button className="btn sm primary" onClick={()=>{onUpdate({stage:nextStage.id});setAiState('idle');}}
+                style={{background:vs.color,borderColor:vs.color,color:'#000',fontWeight:700}}>
+                {aiResult.verdict==='PASS'?'✅':'⚠️'} → {nextStage.label} 으로 이동
+              </button>
+            )}
+            {nextStage&&aiResult.verdict==='FAIL'&&(
+              <div style={{fontSize:12,color:'var(--red)',fontWeight:600}}>
+                ❌ 서류 보완 후 다시 검수해주세요
+              </div>
+            )}
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
 
 /* ── DocumentsView ───────────────────────────────────── */
 function DocumentsView({projects,onOpen,onUpdate}){
