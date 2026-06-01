@@ -1,8 +1,14 @@
 const { Pool } = require('pg');
 
+if (!process.env.DATABASE_URL) {
+  console.error('❌ DATABASE_URL 환경변수가 없습니다!');
+  console.error('현재 환경변수:', JSON.stringify(Object.keys(process.env)));
+  process.exit(1);
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  ssl: { rejectUnauthorized: false },
 });
 
 async function initDB() {
@@ -30,7 +36,6 @@ async function initDB() {
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       );
-
       CREATE TABLE IF NOT EXISTS files (
         id TEXT PRIMARY KEY,
         project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
@@ -44,7 +49,6 @@ async function initDB() {
         ai_analysis JSONB DEFAULT NULL,
         uploaded_at TIMESTAMP DEFAULT NOW()
       );
-
       CREATE TABLE IF NOT EXISTS members (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -53,7 +57,6 @@ async function initDB() {
         is_admin BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT NOW()
       );
-
       CREATE TABLE IF NOT EXISTS departments (
         id TEXT PRIMARY KEY,
         label TEXT NOT NULL,
@@ -61,28 +64,22 @@ async function initDB() {
         en TEXT,
         created_at TIMESTAMP DEFAULT NOW()
       );
-
       CREATE TABLE IF NOT EXISTS alert_config (
         stage_id TEXT PRIMARY KEY,
         days INTEGER DEFAULT 30
       );
-
       CREATE INDEX IF NOT EXISTS idx_files_project ON files(project_id);
-      CREATE INDEX IF NOT EXISTS idx_files_stage ON files(project_id, stage);
     `);
-
-    // 기본 부서 데이터 삽입
     await client.query(`
       INSERT INTO departments (id, label, color, en) VALUES
-        ('sales',    '영업',   '#a78bfa', 'Sales'),
-        ('dev',      '개발',   '#4d9fff', 'R&D'),
-        ('mfg',      '생산',   '#7ec8e3', 'Manufacturing'),
-        ('qa',       '품질',   '#ffb800', 'QC/QA'),
-        ('purchase', '구매',   '#9d7fff', 'Procurement'),
-        ('service',  '서비스', '#00e699', 'Field Service')
+        ('sales','영업','#a78bfa','Sales'),
+        ('dev','개발','#4d9fff','R&D'),
+        ('mfg','생산','#7ec8e3','Manufacturing'),
+        ('qa','품질','#ffb800','QC/QA'),
+        ('purchase','구매','#9d7fff','Procurement'),
+        ('service','서비스','#00e699','Field Service')
       ON CONFLICT (id) DO NOTHING;
     `);
-
     console.log('✅ DB 초기화 완료');
   } finally {
     client.release();
