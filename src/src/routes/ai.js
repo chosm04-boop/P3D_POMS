@@ -130,7 +130,7 @@ async function analyzeFile(fileText, stageId, projectInfo) {
     headers: {
       'Content-Type': 'application/json',
       'Content-Length': Buffer.byteLength(bodyStr, 'utf8'),
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'x-api-key': String(process.env.ANTHROPIC_API_KEY || ''),
       'anthropic-version': '2023-06-01',
     },
   }, bodyStr);
