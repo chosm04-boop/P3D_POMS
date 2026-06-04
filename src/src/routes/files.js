@@ -50,13 +50,13 @@ router.post('/:projectId/upload', upload.single('file'), async (req, res) => {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
     `, [
       fileId, req.params.projectId, stage, docId,
-      file.originalname, file.path, file.mimetype,
+      Buffer.from(file.originalname, 'latin1').toString('utf8'), file.path, file.mimetype,
       file.size, text,
     ]);
 
     res.json({
       id: fileId,
-      originalName: file.originalname,
+      originalName: Buffer.from(file.originalname, 'latin1').toString('utf8'),
       fileType: file.mimetype,
       fileSize: file.size,
       pages,
