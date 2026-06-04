@@ -161,7 +161,7 @@ router.get('/template/:stageId', (req, res) => {
   };
   const filename = stageFileMap[req.params.stageId];
   if (!filename) return res.status(404).json({ error: '양식 없음' });
-  const filePath = path.join(__dirname, '../../templates', filename);
+  const filePath = path.join(__dirname, '../../../', filename);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: '파일 없음' });
   // 한글 파일명 인코딩 처리
   const encodedFilename = encodeURIComponent(filename);
