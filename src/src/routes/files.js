@@ -148,6 +148,7 @@ router.delete('/:projectId/file/:fileId', async (req, res) => {
 // 양식 다운로드 (서버에서 서빙)
 router.get('/template/:stageId', (req, res) => {
   const stageFileMap = {
+    'cr':          'CR-YJM-2026-001_CR양식.docx',
     'loi':         '01_LOI접수_미팅회의록.docx',
     'rfq':         '02_RFQ분석_시나리오확인서.docx',
     'feasibility': '03_FeasibilityReview_내부검토회의록.docx',
@@ -160,9 +161,13 @@ router.get('/template/:stageId', (req, res) => {
   };
   const filename = stageFileMap[req.params.stageId];
   if (!filename) return res.status(404).json({ error: '양식 없음' });
- const filePath = path.join(__dirname, '../../../', filename);
+  const filePath = path.join(__dirname, '../../templates', filename);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: '파일 없음' });
-  res.download(filePath, filename);
+  // 한글 파일명 인코딩 처리
+  const encodedFilename = encodeURIComponent(filename);
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.sendFile(filePath);
 });
 
 module.exports = router;
