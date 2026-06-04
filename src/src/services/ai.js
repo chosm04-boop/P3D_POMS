@@ -15,7 +15,7 @@ const STAGE_CRITERIA = {
       { key: 'environment', label: 'Operating environment documented', weight: 15 },
       { key: 'customer_confirm', label: 'Customer confirmed the content', weight: 10 },
         ]},
-    feasibility: { name: 'Feasibility', criteria: [
+    feasibility: { name: 'Feasibility', criteria: [h
       { key: 'based_on_scenario', label: 'Review based on scenario', weight: 20 },
       { key: 'feasibility_conclusion', label: 'Feasibility conclusion is clear', weight: 30 },
       { key: 'risk_identified', label: 'Risks are identified', weight: 20 },
@@ -81,7 +81,7 @@ async function analyzeFile(fileText, stageId, projectInfo) {
   const response = await axios.post(
         'https://api.anthropic.com/v1/messages',
     {
-            model: 'claude-sonnet-4-20250514',
+                    model: 'claude-haiku-4-5',
             max_tokens: 2000,
             messages: [{ role: 'user', content: prompt }],
     },
