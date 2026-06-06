@@ -11,7 +11,7 @@ const { analyzeFile } = require('../services/ai');
 // 업로드 설정
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-          const dir = path.join(__dirname, '../../../uploads', req.params.projectId);
+          const dir = '/app/uploads', req.params.projectId);
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
