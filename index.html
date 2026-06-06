@@ -966,13 +966,18 @@ function ProjectDetail({project:p,alertCfg,members,depts,onClose,onUpdate,onDele
       units:p.units?.length?p.units:[{id:genId(),name:'호기 #1',items:[{id:genId(),name:'',qty:1,unitPrice:0}]}],
       paySchedule:p.paySchedule||[],assignments:p.assignments||{}};
   });
+  const [savedAt,setSavedAt]=useState(null);
+  const [isDirty,setIsDirty]=useState(false);
+  useEffect(()=>{if(editing)setIsDirty(true);},[form]);
   useEffect(()=>{
-    if(!editing)return;
+    if(!editing||!isDirty)return;
     const t=setTimeout(()=>{
-      apiFetch('POST',`/api/projects/${p.id}/draft`,{...form,_savedAt:new Date().toISOString()}).catch(()=>{});
-    },5000);
+      apiFetch('POST',`/api/projects/${p.id}/draft`,{...form,_savedAt:new Date().toISOString()})
+        .then(()=>{ setSavedAt(new Date()); setIsDirty(false); })
+        .catch(()=>{});
+    },3000);
     return()=>clearTimeout(t);
-  },[form,editing]);
+  },[form,editing,isDirty]);
   const [noteText,setNoteText]=useState('');
   const [crForm,setCrForm]=useState({title:'',desc:'',impact:''});
   const [showCrForm,setShowCrForm]=useState(false);
@@ -1122,8 +1127,10 @@ function ProjectDetail({project:p,alertCfg,members,depts,onClose,onUpdate,onDele
                 <textarea value={form.notes_text||p.notes_text||''} onChange={e=>set('notes_text',e.target.value)}/></div>
               <div style={{display:'flex',justifyContent:'space-between'}}>
                 <button className="btn danger sm" onClick={()=>{if(confirm('삭제?'))onDelete()}}>삭제</button>
-                <div style={{display:'flex',gap:8}}>
-                  <button className="btn ghost" onClick={()=>setEditing(false)}>취소</button>
+                <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                  {savedAt&&<span style={{fontSize:11,color:'var(--text3)'}}>✓ {savedAt.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})} 임시저장됨</span>}
+                  {isDirty&&<span style={{fontSize:11,color:'var(--amber)'}}>● 미저장</span>}
+                  <button className="btn ghost" onClick={()=>{if(!isDirty||confirm('저장하지 않은 변경사항이 있습니다. 닫으시겠습니까?'))setEditing(false);}}>취소</button>
                   <button className="btn primary" onClick={saveEdit}>저장</button>
                 </div>
               </div>
@@ -2341,4 +2348,4 @@ function Settings({alertCfg,setAlertCfg,depts,setDepts,members,setMembers}){
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
-</html>
+   </html>
