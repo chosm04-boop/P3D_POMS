@@ -1674,7 +1674,7 @@ function StageGate({project:p, nextStage, prevStage, onUpdate, onForceMove, curr
   const vs=verdict?vStyle[verdict]:null;
   const pendingCRs=(p.crs||[]).filter(c=>['open','review','pending'].includes(c.status));
   const hasPendingCR=pendingCRs.length>0;
-  const canMove=allDone&&verdict==='PASS'&&!hasPendingCR;
+  const canMove=verdict==='PASS'&&!hasPendingCR;
   const HAS_TMPL=['loi','rfq','feasibility','spec_nego','spec_freeze','po_receipt','bom','burnin','qc_fat'];
 
   return(
