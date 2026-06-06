@@ -67,6 +67,7 @@ const STAGE_CRITERIA = {
                     });
                     if(stage.bonus){parsed.bonus_detail={label:L.bonus||stage.bonus.key,score:bonus,points:stage.bonus.points};}
                     return parsed;
+              }
               module.exports = { analyzeFile, STAGE_CRITERIA };
 
 module.exports = { analyzeFile, STAGE_CRITERIA };
