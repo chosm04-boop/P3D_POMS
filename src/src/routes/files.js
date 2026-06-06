@@ -146,6 +146,28 @@ router.delete('/:projectId/file/:fileId', async (req, res) => {
 });
 
 // 양식 다운로드 (서버에서 서빙)
+
+router.get('/:projectId/download/:fileId', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT file_path, original_name, file_type FROM files WHERE id=$1 AND project_id=$2',[req.params.fileId, req.params.projectId]);
+    if (!result.rows.length) return res.status(404).json({ error: 'not found' });
+    const f = result.rows[0];
+    const path = require('path'); const fs = require('fs');
+    const abs = path.resolve(f.file_path);
+    if (!fs.existsSync(abs)) return res.status(404).json({ error: 'not found' });
+    res.setHeader('Content-Disposition', "attachment; filename*=UTF-8''" + encodeURIComponent(f.original_name));
+    res.setHeader('Content-Type', f.file_type || 'application/octet-stream');
+    res.sendFile(abs);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/:projectId/all', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT id,doc_id,stage,original_name,file_type,file_size,uploaded_at,uploaded_by FROM files WHERE project_id=$1 ORDER BY stage,uploaded_at DESC',[req.params.projectId]);
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/template/:stageId', (req, res) => {
   const stageFileMap = {
     'cr':          'CR-YJM-2026-001_CR양식.docx',
