@@ -163,7 +163,7 @@ router.get('/:projectId/download/:fileId', async (req, res) => {
 
 router.get('/:projectId/all', async (req, res) => {
   try {
-    const r = await pool.query('SELECT id,doc_id,stage,original_name,file_type,file_size,uploaded_at,uploaded_by FROM files WHERE project_id=$1 ORDER BY stage,uploaded_at DESC',[req.params.projectId]);
+    const r = await pool.query('SELECT id,doc_id,stage,original_name,file_type,file_size,uploaded_at FROM files WHERE project_id=$1 ORDER BY stage,uploaded_at DESC',[req.params.projectId]);
     res.json(r.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
