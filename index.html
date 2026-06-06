@@ -1884,19 +1884,57 @@ function StageGate({project:p, nextStage, prevStage, onUpdate, onForceMove, curr
 /* ── DocumentsView ───────────────────────────────────── */
 function DocumentsView({projects,onOpen,onUpdate}){
   const [selId,setSelId]=useState(projects[0]?.id||null);
+  const [ownerFilter,setOwnerFilter]=useState('전체');
+  const [selStage,setSelStage]=useState(null);
+  const [stageFiles,setStageFiles]=useState({});
+  const [loadingFiles,setLoadingFiles]=useState({});
+
   const proj=projects.find(p=>p.id===selId);
   const allIdx=proj?POMS_STAGES.findIndex(s=>s.id===proj.stage):-1;
   const relStages=allIdx>=0?POMS_STAGES.slice(0,allIdx+1):[];
   const reqTotal=relStages.reduce((a,s)=>a+(STAGE_DOCS[s.id]||[]).filter(d=>d.required).length,0);
   const reqDone=relStages.reduce((a,s)=>a+(STAGE_DOCS[s.id]||[]).filter(d=>d.required&&(proj?.docs||{})[s.id+'_'+d.id]==='done').length,0);
-  function setDocStatus(sid,did,val){onUpdate(proj.id,{docs:{...(proj.docs||{}),[sid+'_'+did]:val}});}
+
+  useEffect(()=>{
+    if(!proj)return;
+    apiFetch('GET',`/api/files/${proj.id}/all`)
+      .then(files=>{
+        const byStage={};
+        files.forEach(f=>{ if(!byStage[f.stage])byStage[f.stage]=[]; byStage[f.stage].push(f); });
+        setStageFiles(byStage);
+        const newDocs={...( proj.docs||{})};
+        let changed=false;
+        Object.keys(byStage).forEach(stage=>{
+          const key=stage+'_uploaded';
+          if(byStage[stage].length>0 && !newDocs[key]){
+            newDocs[key]='pending'; changed=true;
+          }
+        });
+        if(changed) onUpdate(proj.id,{docs:newDocs});
+      }).catch(()=>{});
+  },[selId]);
+
+  function setDocStatus(sid,did,val){
+    onUpdate(proj.id,{docs:{...(proj.docs||{}),[sid+'_'+did]:val}});
+  }
+
+  function fmtSize(b){ if(!b)return''; if(b<1024)return b+'B'; if(b<1048576)return(b/1024).toFixed(0)+'KB'; return(b/1048576).toFixed(1)+'MB'; }
+  function fmtDate(s){ if(!s)return''; return new Date(s).toLocaleDateString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }
+
+  const owners=['전체','영업','개발','품질','생산','서비스'];
   const sc={done:'var(--green)',pending:'var(--amber)',missing:'var(--red)'};
+
+  const filteredStages=relStages.filter(stage=>{
+    if(ownerFilter==='전체')return(STAGE_DOCS[stage.id]||[]).length>0;
+    return(STAGE_DOCS[stage.id]||[]).some(d=>d.owner===ownerFilter);
+  });
+
   return(
-    <div style={{display:'flex',gap:20,height:'calc(100vh - 130px)'}}>
-      <div style={{width:260,flexShrink:0,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--r2)',overflow:'hidden',display:'flex',flexDirection:'column'}}>
-        <div style={{padding:'10px 14px',borderBottom:'1px solid var(--border)',fontSize:11,fontWeight:600,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'.04em'}}>프로젝트 선택</div>
+    <div style={{display:'flex',gap:16,height:'calc(100vh - 130px)'}}>
+      <div style={{width:220,flexShrink:0,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--r2)',overflow:'hidden',display:'flex',flexDirection:'column'}}>
+        <div style={{padding:'10px 14px',borderBottom:'1px solid var(--border)',fontSize:11,fontWeight:600,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'.04em'}}>프로젝트</div>
         <div style={{flex:1,overflowY:'auto'}}>
-          {projects.length===0&&<div style={{padding:'16px',color:'var(--text3)',fontSize:12,textAlign:'center'}}>없음</div>}
+          {projects.length===0&&<div style={{padding:16,color:'var(--text3)',fontSize:12,textAlign:'center'}}>없음</div>}
           {projects.map(p=>{
             const psi=stageInfo(p.stage);const ppc=phaseColor(psi.phase);
             const pi=POMS_STAGES.findIndex(s=>s.id===p.stage);
@@ -1905,7 +1943,7 @@ function DocumentsView({projects,onOpen,onUpdate}){
             const pd=ps.reduce((a,s)=>a+(STAGE_DOCS[s.id]||[]).filter(d=>d.required&&(p.docs||{})[s.id+'_'+d.id]==='done').length,0);
             const pct=pr>0?Math.round((pd/pr)*100):0;
             return(
-              <div key={p.id} onClick={()=>setSelId(p.id)} style={{padding:'10px 14px',borderBottom:'1px solid var(--border)',cursor:'pointer',background:selId===p.id?'var(--bg3)':'transparent',borderLeft:selId===p.id?'2px solid var(--accent)':'2px solid transparent'}}>
+              <div key={p.id} onClick={()=>{setSelId(p.id);setSelStage(null);}} style={{padding:'10px 14px',borderBottom:'1px solid var(--border)',cursor:'pointer',background:selId===p.id?'var(--bg3)':'transparent',borderLeft:selId===p.id?'2px solid var(--accent)':'2px solid transparent'}}>
                 <div style={{fontSize:12,fontWeight:600,marginBottom:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name}</div>
                 <div style={{display:'flex',alignItems:'center',gap:6}}>
                   <span className="badge" style={{background:ppc+'18',color:ppc,border:'1px solid '+ppc+'25',fontSize:9,padding:'1px 5px'}}>{psi.label}</span>
@@ -1919,55 +1957,156 @@ function DocumentsView({projects,onOpen,onUpdate}){
           })}
         </div>
       </div>
-      <div style={{flex:1,overflow:'auto'}}>
-        {!proj?<div style={{color:'var(--text3)',fontSize:13,padding:'40px',textAlign:'center'}}>왼쪽에서 프로젝트를 선택하세요</div>:(
-          <div>
-            <div style={{display:'flex',alignItems:'center',marginBottom:16}}>
-              <div><div style={{fontSize:15,fontWeight:700}}>{proj.name}</div><div style={{fontSize:12,color:'var(--text2)',marginTop:2}}>{proj.customer||'—'}</div></div>
-              <div style={{marginLeft:'auto',textAlign:'center'}}>
-                <div style={{fontSize:11,color:'var(--text2)',marginBottom:2}}>필수 서류 완료</div>
-                <div style={{fontWeight:700,fontSize:16,color:reqDone===reqTotal?'var(--green)':'var(--amber)',fontFamily:"'DM Mono',monospace"}}>{reqDone}/{reqTotal}</div>
+      <div style={{width:320,flexShrink:0,display:'flex',flexDirection:'column',gap:0}}>
+        {!proj?<div style={{color:'var(--text3)',fontSize:13,padding:'40px',textAlign:'center'}}>프로젝트를 선택하세요</div>:(
+          <>
+            <div style={{display:'flex',alignItems:'center',marginBottom:10,gap:8}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{proj.name}</div>
+                <div style={{fontSize:11,color:'var(--text2)'}}>{proj.customer||'—'}</div>
+              </div>
+              <div style={{textAlign:'center',flexShrink:0}}>
+                <div style={{fontSize:10,color:'var(--text2)'}}>서류완료</div>
+                <div style={{fontWeight:700,fontSize:14,color:reqDone===reqTotal?'var(--green)':'var(--amber)',fontFamily:"'DM Mono',monospace"}}>{reqDone}/{reqTotal}</div>
               </div>
             </div>
-            {relStages.map(stage=>{
-              const docs=STAGE_DOCS[stage.id]||[];if(!docs.length)return null;
-              const spc=phaseColor(stage.phase);
-              const sdone=docs.filter(d=>(proj.docs||{})[stage.id+'_'+d.id]==='done').length;
-              return(
-                <div key={stage.id} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--r2)',marginBottom:10,overflow:'hidden'}}>
-                  <div style={{padding:'8px 14px',background:spc+'10',borderBottom:'1px solid '+spc+'25',display:'flex',alignItems:'center',gap:10}}>
-                    <span className="badge" style={{background:spc+'22',color:spc,border:'1px solid '+spc+'35',fontSize:11}}>{stage.label}</span>
-                    <span style={{fontSize:10,color:'var(--text3)',fontStyle:'italic'}}>{stage.en}</span>
-                    {stage.id===proj.stage&&<span style={{fontSize:10,background:'var(--accent)',color:'#000',padding:'1px 6px',borderRadius:3,fontWeight:700}}>현재</span>}
-                    <span style={{marginLeft:'auto',fontSize:11,color:sdone===docs.length?'var(--green)':'var(--text2)',fontFamily:"'DM Mono',monospace"}}>{sdone}/{docs.length}</span>
+            <div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:10}}>
+              {owners.map(o=>(
+                <button key={o} onClick={()=>setOwnerFilter(o)}
+                  className="btn xs" style={{borderColor:ownerFilter===o?'var(--accent)':'var(--border)',color:ownerFilter===o?'var(--accent)':'var(--text2)',background:ownerFilter===o?'var(--accent-dim)':'transparent'}}>
+                  {o}
+                </button>
+              ))}
+            </div>
+            <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:8}}>
+              {filteredStages.map(stage=>{
+                const docs=(STAGE_DOCS[stage.id]||[]).filter(d=>ownerFilter==='전체'||d.owner===ownerFilter);
+                if(!docs.length)return null;
+                const spc=phaseColor(stage.phase);
+                const sdone=docs.filter(d=>(proj.docs||{})[stage.id+'_'+d.id]==='done').length;
+                const filesThisStage=stageFiles[stage.id]||[];
+                return(
+                  <div key={stage.id} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--r2)',overflow:'hidden'}}>
+                    <div style={{padding:'7px 12px',background:spc+'10',borderBottom:'1px solid '+spc+'25',display:'flex',alignItems:'center',gap:8}}>
+                      <span className="badge" style={{background:spc+'22',color:spc,border:'1px solid '+spc+'35',fontSize:10}}>{stage.label}</span>
+                      {stage.id===proj.stage&&<span style={{fontSize:9,background:'var(--accent)',color:'#000',padding:'1px 5px',borderRadius:3,fontWeight:700}}>현재</span>}
+                      {filesThisStage.length>0&&<span style={{fontSize:10,color:'var(--text3)'}}>📎 {filesThisStage.length}개</span>}
+                      <span style={{marginLeft:'auto',fontSize:10,color:sdone===docs.length?'var(--green)':'var(--text2)',fontFamily:"'DM Mono',monospace"}}>{sdone}/{docs.length}</span>
+                    </div>
+                    {docs.map(doc=>{
+                      const key=stage.id+'_'+doc.id;const status=(proj.docs||{})[key];const c=sc[status]||'var(--text3)';
+                      const docFiles=filesThisStage.filter(f=>f.doc_id===doc.id||doc.id==='po_doc'||doc.id==='deliv_conf');
+                      const isSelected=selStage===stage.id+'_'+doc.id;
+                      return(
+                        <div key={doc.id}
+                          onClick={()=>setSelStage(isSelected?null:stage.id+'_'+doc.id)}
+                          style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderBottom:'1px solid var(--border)',cursor:'pointer',background:isSelected?'var(--bg3)':'transparent',transition:'background .15s'}}>
+                          <div style={{width:12,height:12,borderRadius:'50%',background:status==='done'?'var(--green)':status==='pending'?'var(--amber)':'transparent',border:'2px solid '+(status==='done'?'var(--green)':status==='pending'?'var(--amber)':'var(--border3)'),flexShrink:0}}/>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:12,fontWeight:500,display:'flex',alignItems:'center',gap:5}}>
+                              {doc.label}
+                              {doc.required&&<span style={{fontSize:9,color:'var(--red)',fontWeight:700}}>필수</span>}
+                              {filesThisStage.length>0&&<span style={{fontSize:9,color:'var(--cyan)',background:'var(--cyan-dim,#00c8ff15)',padding:'1px 4px',borderRadius:3}}>📎{filesThisStage.length}</span>}
+                            </div>
+                            <div style={{fontSize:11,color:'var(--text3)'}}>{doc.owner} 담당</div>
+                          </div>
+                          <select value={status||''} onClick={e=>e.stopPropagation()} onChange={e=>setDocStatus(stage.id,doc.id,e.target.value)}
+                            style={{width:72,fontSize:10,padding:'3px 6px',color:c,background:'var(--bg3)',border:'1px solid '+c+'40'}}>
+                            <option value="">—</option>
+                            <option value="pending">진행중</option>
+                            <option value="done">완료</option>
+                            <option value="missing">미제출</option>
+                          </select>
+                        </div>
+                      );
+                    })}
                   </div>
-                  {docs.map(doc=>{
-                    const key=stage.id+'_'+doc.id;const status=(proj.docs||{})[key];const c=sc[status]||'var(--text3)';
-                    return(
-                      <div key={doc.id} style={{display:'flex',alignItems:'center',gap:14,padding:'12px 16px',borderBottom:'1px solid var(--border)'}}>
-                        <div style={{width:14,height:14,borderRadius:'50%',background:status==='done'?'var(--green)':'transparent',border:'2px solid '+(status==='done'?'var(--green)':'var(--border3)'),flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                          {status==='done'&&<span style={{fontSize:8,color:'#000',fontWeight:700}}>✓</span>}
-                        </div>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:14,fontWeight:500,display:'flex',alignItems:'center',gap:6}}>{doc.label}{doc.required&&<span style={{fontSize:9,color:'var(--red)',fontWeight:700}}>필수</span>}</div>
-                          <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{doc.owner} 담당</div>
-                        </div>
-                        <select value={status||''} onChange={e=>setDocStatus(stage.id,doc.id,e.target.value)} style={{width:90,fontSize:11,padding:'4px 8px',color:c,background:'var(--bg3)',border:'1px solid '+c+'40'}}>
-                          <option value=''>—</option><option value='pending'>진행중</option><option value='done'>완료</option><option value='missing'>미제출</option>
-                        </select>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          </>
         )}
+      </div>
+      <div style={{flex:1,display:'flex',flexDirection:'column',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--r2)',overflow:'hidden'}}>
+        {!proj?(
+          <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text3)',fontSize:13}}>프로젝트를 선택하세요</div>
+        ):!selStage?(
+          <div style={{flex:1,display:'flex',flexDirection:'column'}}>
+            <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)',fontSize:12,fontWeight:600,color:'var(--text2)'}}>
+              📁 전체 업로드 파일
+            </div>
+            <div style={{flex:1,overflowY:'auto',padding:'8px'}}>
+              {Object.keys(stageFiles).length===0?(
+                <div style={{textAlign:'center',color:'var(--text3)',fontSize:12,padding:'40px'}}>업로드된 파일이 없습니다</div>
+              ):(
+                Object.entries(stageFiles).map(([stageId,files])=>{
+                  const si=POMS_STAGES.find(s=>s.id===stageId);if(!files.length)return null;
+                  const spc=si?phaseColor(si.phase):'var(--accent)';
+                  return(
+                    <div key={stageId} style={{marginBottom:12}}>
+                      <div style={{fontSize:10,fontWeight:600,color:spc,marginBottom:4,padding:'0 4px'}}>{si?.label||stageId}</div>
+                      {files.map(f=>(
+                        <div key={f.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',background:'var(--bg3)',borderRadius:'var(--r)',marginBottom:4,border:'1px solid var(--border)'}}>
+                          <span style={{fontSize:18}}>{f.file_type?.includes('pdf')?'📄':f.file_type?.includes('word')||f.original_name?.endsWith('.docx')?'📝':'📎'}</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:12,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.original_name}</div>
+                            <div style={{fontSize:10,color:'var(--text3)'}}>{fmtSize(f.file_size)} · {fmtDate(f.uploaded_at)}</div>
+                          </div>
+                          <a href={`/api/files/${proj.id}/download/${f.id}`} download={f.original_name}
+                            style={{fontSize:11,color:'var(--accent)',textDecoration:'none',padding:'4px 8px',border:'1px solid var(--accent)',borderRadius:'var(--r)',flexShrink:0}}>
+                            ⬇ 다운로드
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        ):(()=>{
+          const [stageId,docId]=selStage.split('_').reduce((a,v,i,arr)=>i===0?[v,'']:i===arr.length-1?[a[0],a[1]+v]:[a[0],a[1]+v+'_'],[]);
+          const si=POMS_STAGES.find(s=>s.id===selStage.split('_')[0]);
+          const filesForStage=stageFiles[selStage.split('_')[0]]||[];
+          return(
+            <div style={{flex:1,display:'flex',flexDirection:'column'}}>
+              <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontSize:12,fontWeight:600}}>{si?.label||''} 서류</span>
+                <button onClick={()=>setSelStage(null)} style={{marginLeft:'auto',background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:16}}>×</button>
+              </div>
+              <div style={{flex:1,overflowY:'auto',padding:'12px'}}>
+                {filesForStage.length===0?(
+                  <div style={{textAlign:'center',color:'var(--text3)',fontSize:12,padding:'40px 20px'}}>
+                    <div style={{fontSize:32,marginBottom:8}}>📭</div>
+                    <div>이 단계에 업로드된 파일이 없습니다</div>
+                    <div style={{fontSize:11,marginTop:4,color:'var(--text3)'}}>단계 이동 화면에서 파일을 업로드하세요</div>
+                  </div>
+                ):filesForStage.map(f=>(
+                  <div key={f.id} style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r2)',padding:'14px 16px',marginBottom:10}}>
+                    <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
+                      <span style={{fontSize:28,flexShrink:0}}>{f.file_type?.includes('pdf')?'📄':f.original_name?.endsWith('.docx')?'📝':'📎'}</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:600,marginBottom:4,wordBreak:'break-word'}}>{f.original_name}</div>
+                        <div style={{fontSize:11,color:'var(--text3)',marginBottom:8}}>
+                          {fmtSize(f.file_size)} · 업로드: {fmtDate(f.uploaded_at)}
+                          {f.uploaded_by&&<span> · {f.uploaded_by}</span>}
+                        </div>
+                        <a href={`/api/files/${proj.id}/download/${f.id}`} download={f.original_name}
+                          style={{display:'inline-block',fontSize:12,color:'var(--accent)',textDecoration:'none',padding:'6px 14px',border:'1px solid var(--accent)',borderRadius:'var(--r)',fontWeight:600}}>
+                          ⬇ 다운로드
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
 }
-
 
 /* ── TimelineView ────────────────────────────────────── */
 function TimelineView({projects,onOpen}){
