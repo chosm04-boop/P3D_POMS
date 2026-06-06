@@ -1693,13 +1693,12 @@ function StageGate({project:p, nextStage, prevStage, onUpdate, onForceMove, curr
           <div style={{background:'var(--bg4)',borderRadius:3,height:5}}>
             <div style={{height:'100%',borderRadius:3,background:allDone?'var(--green)':'var(--amber)',width:`${reqDocs.length>0?(doneCount/reqDocs.length)*100:0}%`,transition:'width .3s'}}/>
           </div>
-          {missingDocs.length>0&&(
-            <div style={{marginTop:7,display:'flex',flexWrap:'wrap',gap:4}}>
-              {missingDocs.map(d=>(
-                <span key={d.id} style={{fontSize:10,padding:'2px 8px',borderRadius:10,background:'var(--amber-dim)',color:'var(--amber)',border:'1px solid #ffb80030'}}>{d.label}</span>
-              ))}
+          <div style={{marginTop:7,display:'flex',flexWrap:'wrap',gap:4}}>
+              {reqDocs.map(d=>{
+                const done=(p.docs||{})[p.stage+'_'+d.id]==='done';
+                return(<button key={d.id} onClick={()=>onUpdate({docs:{...(p.docs||{}),[p.stage+'_'+d.id]:done?undefined:'done'}})} style={{fontSize:11,padding:'4px 10px',borderRadius:10,cursor:'pointer',border:'1px solid '+(done?'#00e69960':'var(--border)'),background:done?'#00e69925':'var(--bg4)',color:done?'var(--green)':'var(--text2)'}}>{ done?'✅ ':'☐ '}{d.label}</button>);
+              })}
             </div>
-          )}
         </div>
       )}
 
