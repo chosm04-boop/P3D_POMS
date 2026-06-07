@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../database');
+const { notifyStageMove } = require('../services/slack');
 const { v4: uuidv4 } = require('uuid');
 const { requireAdmin } = require('../middleware/auth');
 
@@ -116,7 +117,9 @@ router.put('/:id', async (req, res) => {
     ]);
 
     const updated = await pool.query('SELECT * FROM projects WHERE id = $1', [req.params.id]);
-    res.json(dbToProject(updated.rows[0]));
+    const proj = dbToProject(updated.rows[0]);
+    notifyStageMove(proj, old.stage, stage).catch(e => console.error('Slack error:', e));
+    res.json(proj);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
