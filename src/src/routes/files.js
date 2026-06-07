@@ -150,14 +150,13 @@ router.delete('/:projectId/file/:fileId', async (req, res) => {
 router.get('/:projectId/download/:fileId', async (req, res) => {
   try {
     const result = await pool.query('SELECT file_path, original_name, file_type FROM files WHERE id=$1 AND project_id=$2',[req.params.fileId, req.params.projectId]);
-    if (!result.rows.length) return res.status(404).json({ error: 'not found' });
+    if (!result.rows.length) return res.status(404).json({ error: 'file not found in db' });
     const f = result.rows[0];
-    const path = require('path'); const fs = require('fs');
-    const abs = path.resolve(f.file_path);
-    if (!fs.existsSync(abs)) return res.status(404).json({ error: 'not found' });
+    if (!fs.existsSync(f.file_path)) return res.status(404).json({ error: 'file not on disk: ' + f.file_path });
     res.setHeader('Content-Disposition', "attachment; filename*=UTF-8''" + encodeURIComponent(f.original_name));
     res.setHeader('Content-Type', f.file_type || 'application/octet-stream');
-    res.sendFile(abs);
+    const stream = fs.createReadStream(f.file_path);
+    stream.pipe(res);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
