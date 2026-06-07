@@ -7,6 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 const { pool } = require('../database');
 const { extractText } = require('../services/fileParser');
 const { analyzeFile } = require('../services/ai');
+const { notifyAIApproved } = require('../services/slack');
 
 // 업로드 설정
 const storage = multer.diskStorage({
@@ -124,6 +125,13 @@ router.post('/:projectId/analyze/:stage', async (req, res) => {
       );
     }
 
+    // AI 승인 시 Slack 알림
+    if (analysis && analysis.passed) {
+      notifyAIApproved(
+        { name: projectInfo.name, customer: projectInfo.customer, owner: '' },
+        req.params.stage, analysis.total_score, files.rows.length
+      ).catch(e => console.error('Slack error:', e));
+    }
     res.json(analysis);
   } catch (err) {
     console.error('AI 분석 오류:', err);
