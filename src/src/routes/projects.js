@@ -118,7 +118,9 @@ router.put('/:id', async (req, res) => {
 
     const updated = await pool.query('SELECT * FROM projects WHERE id = $1', [req.params.id]);
     const proj = dbToProject(updated.rows[0]);
-    notifyStageMove(proj, old.stage, stage).catch(e => console.error('Slack error:', e));
+    if (stageChanged) {
+      notifyStageMove(proj, old.stage, p.stage).catch(e => console.error('Slack error:', e));
+    }
     res.json(proj);
   } catch (err) {
     res.status(500).json({ error: err.message });
