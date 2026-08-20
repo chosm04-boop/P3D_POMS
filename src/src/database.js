@@ -6,17 +6,24 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-// DATABASE_URL 파싱 (SSL 충돌 방지 위해 URL 파라미터 제거 후 명시적 설정)
-const dbUrl = process.env.DATABASE_URL.replace(/[?&]sslmode=[^&]*/g, '');
+// DATABASE_URL을 개별 파라미터로 분해 (connectionString + SSL 충돌 방지)
+const dbUrlClean = process.env.DATABASE_URL.replace(/[?&]sslmode=[^&]*/g, '');
+const parsed = new URL(dbUrlClean);
 
 const pool = new Pool({
-  connectionString: dbUrl,
-  ssl: { rejectUnauthorized: false, require: true },
+  host: parsed.hostname,
+  port: parsed.port ? Number(parsed.port) : 5432,
+  user: decodeURIComponent(parsed.username),
+  password: decodeURIComponent(parsed.password),
+  database: parsed.pathname.slice(1),
+  ssl: { rejectUnauthorized: false },
   keepAlive: true,
-  connectionTimeoutMillis: 15000,
+  connectionTimeoutMillis: 20000,
   idleTimeoutMillis: 30000,
   max: 3,
 });
+
+console.log('DB 연결 대상:', parsed.hostname, '포트:', parsed.port || 5432, 'DB:', parsed.pathname.slice(1));
 
 pool.on('error', (err) => {
   console.error('Pool error (무시하고 계속):', err.message);
