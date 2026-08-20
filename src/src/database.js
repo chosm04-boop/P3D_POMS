@@ -9,10 +9,29 @@ if (!process.env.DATABASE_URL) {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
+  keepAlive: true,
+  connectionTimeoutMillis: 10000,
+  max: 5,
 });
 
+pool.on('error', (err) => {
+  console.error('Pool error (무시하고 계속):', err.message);
+});
+
+async function connectWithRetry(retries = 5) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await pool.connect();
+    } catch (err) {
+      console.log(`DB 연결 시도 ${i+1}/${retries} 실패: ${err.message}. 3초 후 재시도...`);
+      if (i === retries - 1) throw err;
+      await new Promise(r => setTimeout(r, 3000));
+    }
+  }
+}
+
 async function initDB() {
-  const client = await pool.connect();
+  const client = await connectWithRetry();
   try {
     await client.query(`
       CREATE TABLE IF NOT EXISTS projects (
