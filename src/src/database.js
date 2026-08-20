@@ -6,12 +6,16 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
+// DATABASE_URL 파싱 (SSL 충돌 방지 위해 URL 파라미터 제거 후 명시적 설정)
+const dbUrl = process.env.DATABASE_URL.replace(/[?&]sslmode=[^&]*/g, '');
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  connectionString: dbUrl,
+  ssl: { rejectUnauthorized: false, require: true },
   keepAlive: true,
-  connectionTimeoutMillis: 10000,
-  max: 5,
+  connectionTimeoutMillis: 15000,
+  idleTimeoutMillis: 30000,
+  max: 3,
 });
 
 pool.on('error', (err) => {
